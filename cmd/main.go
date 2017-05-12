@@ -11,15 +11,52 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+
+	"github.com/charlievieth/buildutil"
 )
 
 var (
+	sizes types.Sizes
+
+	knownOS    = makeMap(buildutil.KnownOSList())
+	knownArch  = makeMap(buildutil.KnownArchList())
 	fset       = token.NewFileSet()
 	errorCount = 0
+
+	// TODO: add option for AllErrors
 	parserMode parser.Mode
-	sizes      types.Sizes
 )
+
+func makeMap(a []string) map[string]bool {
+	m := make(map[string]bool, len(a))
+	for _, s := range a {
+		m[s] = true
+	}
+	return m
+}
+
+func updateGOOS(ctxt *build.Context, tags map[string]bool) string {
+	if tags[ctxt.GOOS] {
+		return ctxt.GOOS
+	}
+	for os, ok := range tags {
+		if !knownOS[os] {
+			continue
+		}
+		if ok && ctxt.GOOS != os {
+			return os
+		}
+		if !ok && ctxt.GOOS == os && runtime.GOOS != ctxt.GOOS {
+			if tags[runtime.GOOS] {
+				return runtime.GOOS
+			}
+		}
+	}
+	return ctxt.GOOS
+}
 
 func initSizes() {
 	wordSize := 8
@@ -82,8 +119,7 @@ func parseFiles(filenames []string) ([]*ast.File, error) {
 	return files, nil
 }
 
-func parseDir(dirname string, allFiles bool) ([]*ast.File, error) {
-	ctxt := build.Default
+func parseDir(ctxt *build.Context, dirname string, allFiles bool) ([]*ast.File, error) {
 	pkginfo, err := ctxt.ImportDir(dirname, 0)
 	if _, nogo := err.(*build.NoGoError); err != nil && !nogo {
 		return nil, err
@@ -130,8 +166,23 @@ func checkPkgFiles(files []*ast.File) {
 	conf.Check(path, fset, files, nil)
 }
 
+func updateContext(ctxt *build.Context, filename string) {
+	tags := make(map[string]bool)
+	if buildutil.GoodOSArchFile(ctxt, filename, tags) {
+		// check for build tags
+		if b, err := ioutil.ReadFile(filename); err == nil {
+			if buildutil.ShouldBuild(ctxt, b, tags) {
+				return
+			}
+		}
+	}
+}
+
 func main() {
 	initSizes()
+
+	allErrors, _ := strconv.ParseBool(os.Getenv("GOSUBL_ALL_ERRORS"))
+	_ = allErrors
 
 	filename := os.Getenv("GOSUBL_LINT_FILENAME")
 	allFiles := strings.HasSuffix(filename, "_test.go")
@@ -148,7 +199,9 @@ func main() {
 		}
 	}
 
-	files, err := parseDir(dirname, allFiles)
+	ctxt := build.Default
+
+	files, err := parseDir(&ctxt, dirname, allFiles)
 	if err != nil {
 		report(err)
 		os.Exit(2)
