@@ -4,20 +4,43 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/charlievieth/buildutil"
 )
 
-func isTest() bool {
-	return strings.HasSuffix(os.Getenv("GOSUBL_LINT_FILENAME"), "_test.go")
+func TestPkg(path string) bool {
+	return strings.HasSuffix(path, "_test.go")
+}
+
+func MainPkg(path string) bool {
+	name, err := buildutil.ReadPackageName(path, nil)
+	return err == nil && name == "main"
+}
+
+func BenchmarkInit() bool {
+	switch os.Getenv("MARGOCOMPLINT_BENCHMARK") {
+	case "1", "t", "T", "true", "TRUE", "True":
+		return true
+	}
+	return false
 }
 
 func main() {
-	var cmd *exec.Cmd
-	if isTest() {
-		cmd = exec.Command("go", "test", "-c", "-o", os.DevNull)
-	} else {
-		cmd = exec.Command("go", "build", "-o", os.DevNull)
+	path := os.Getenv("GOSUBL_LINT_FILENAME")
+	var args []string
+	switch {
+	case TestPkg(path):
+		args = []string{"test", "-c", "-o", os.DevNull}
+	case MainPkg(path):
+		args = []string{"build", "-o", os.DevNull}
+	default:
+		args = []string{"install"}
 	}
+	cmd := exec.Command("go", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	if BenchmarkInit() {
+		return
+	}
 	cmd.Run()
 }
