@@ -36,6 +36,9 @@ func main() {
 	default:
 		args = []string{"install"}
 	}
+	if FlagI {
+		args = append(args, "-i")
+	}
 	cmd := exec.Command("go", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
