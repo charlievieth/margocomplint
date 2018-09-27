@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"strings"
@@ -39,11 +40,19 @@ func main() {
 	if FlagI {
 		args = append(args, "-i")
 	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
 	cmd := exec.Command("go", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	if BenchmarkInit() {
 		return
 	}
-	cmd.Run()
+	if err := cmd.Run(); err != nil {
+		stderr.WriteTo(os.Stderr)
+		os.Exit(1)
+	}
+	if stdout.Len() != 0 {
+		stdout.WriteTo(os.Stdout)
+	}
 }
