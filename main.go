@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,6 +13,9 @@ func TestPkg(path string) bool {
 }
 
 func MainPkg(path string) bool {
+	if path == "" {
+		return false
+	}
 	name, err := buildutil.ReadPackageName(path, nil)
 	return err == nil && name == "main"
 }
@@ -31,28 +33,15 @@ func main() {
 	var args []string
 	switch {
 	case TestPkg(path):
-		args = []string{"test", "-c", "-o", os.DevNull}
+		args = []string{"test", "-c", "-i", "-o", os.DevNull}
 	case MainPkg(path):
-		args = []string{"build", "-o", os.DevNull}
+		args = []string{"build", "-i"}
 	default:
-		args = []string{"install"}
+		args = []string{"install", "-i"}
 	}
-	if FlagI {
-		args = append(args, "-i")
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd := exec.Command("go", args...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
 	if BenchmarkInit() {
 		return
 	}
-	if err := cmd.Run(); err != nil {
-		stderr.WriteTo(os.Stderr)
-		os.Exit(1)
-	}
-	if stdout.Len() != 0 {
-		stdout.WriteTo(os.Stdout)
-	}
+	out, _ := exec.Command("go", args...).CombinedOutput()
+	os.Stdout.Write(out)
 }
